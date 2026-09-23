@@ -1,0 +1,3 @@
+language = "c"
+repo = "valkey-io/valkey"          # mined against upstream; this checkout may be a fork
+test_command = "./.mo-eval/run-unit-tests.sh"
