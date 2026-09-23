@@ -4,8 +4,14 @@ repo = "valkey-io/valkey"          # mined against upstream; this checkout may b
 # Build the GoogleTest binary, then run it with whatever filter the probe appends.
 #
 # One `sh -c` rather than a script in the tree: a workspace is an export of the candidate's PARENT
-# commit, and a script committed on HEAD is not in it. The build has to be inside this command and
-# not in `setup_command`, because an additive change's start state is a tree that does not compile
-# and a build done in setup would report that as an environment that could not be prepared rather
-# than as the task failing.
-test_command = 'sh -c "set -e; make -C src/unit valkey-unit-gtests -j\"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 2)\"; exec ./src/unit/valkey-unit-gtests \"$@\"" mo-eval'
+# commit, and nothing overlays `.mo-eval/` into it, so a script committed on HEAD is simply absent.
+#
+# The build belongs here and not in `setup_command`: an additive change's start state is a tree that
+# does not compile, and a build done in setup reports that as an environment that could not be
+# prepared rather than as the task failing.
+#
+# SINGLE quotes around the script. The generated scorer pastes this command into a bash script
+# verbatim, so double quotes would let THAT shell expand `$(nproc)` and `"$@"` before `sh` ever
+# sees them. Inside single quotes both reach the inner shell, where `"$@"` is the filter the probe
+# appended and `mo-eval` is its `$0`.
+test_command = "sh -c 'set -e; make -C src/unit valkey-unit-gtests -j$(nproc); exec ./src/unit/valkey-unit-gtests \"$@\"' mo-eval"
