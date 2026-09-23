@@ -1,0 +1,44 @@
+name: mo-eval suite
+on:
+  workflow_dispatch:
+    inputs:
+      arms:
+        description: Models to evaluate, space-separated ("none" = build the suite only)
+        default: "none"
+      harnesses:
+        description: Coding-agent harnesses, space-separated (mo, cc, pi, strands)
+        default: "mo"
+permissions:
+  contents: read
+  pull-requests: read
+  id-token: write   # the job authenticates to mo-eval as this repository; no secret to manage
+jobs:
+  suite:
+    runs-on: ubuntu-latest
+    steps:
+      # Pinned by commit, not by tag. This job holds `id-token: write`, so whatever runs in it can
+      # mint this repository's identity, and a moved major tag changes that code with no diff here.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          # The token goes away with the step that used it. `checkout` otherwise leaves it in
+          # `.git/config` as an auth header, and this job runs the repository's OWN historical
+          # tests — code from before anyone reviewed it for this purpose, as the same user, in the
+          # same workspace.
+          persist-credentials: false
+
+      # The C toolchain, on the HOST. The worker image carries it too, but probes are run natively
+      # by the runner — only scoring happens in the image — so a host without gtest fails every
+      # probe at the build step inside the declared test command. `build-essential` is already on
+      # the ubuntu runner; gtest and gmock are not, and no official image ships them, which is why
+      # `worker_image` points at one we publish.
+      - name: C/GoogleTest toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends pkg-config libgtest-dev libgmock-dev
+          pkg-config --modversion gtest gmock
+
+      - uses: momentohq/mo-eval-action@993a3269e0f0b037a2d83cbd81a2e59d4532ee48 # v1.6.0
+        with:
+          arms: ${{ inputs.arms }}
+          harnesses: ${{ inputs.harnesses }}
