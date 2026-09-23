@@ -8,6 +8,16 @@ on:
       harnesses:
         description: Coding-agent harnesses, space-separated (mo, cc, pi, strands)
         default: "mo"
+      candidates:
+        description: >-
+          How many candidates to request source for. The Action defaults to 12, which is too few
+          here: most of valkey's merged pull requests test through the Tcl suite, which the `c`
+          contract cannot grade, so they are rejected as writing no test and eat the budget. At 12,
+          9 were spent that way and one order survived.
+        default: "40"
+      history:
+        description: How many recently merged pull requests to offer as candidates
+        default: "300"
 permissions:
   contents: read
   pull-requests: read
@@ -42,3 +52,5 @@ jobs:
         with:
           arms: ${{ inputs.arms }}
           harnesses: ${{ inputs.harnesses }}
+          candidates: ${{ inputs.candidates }}
+          history: ${{ inputs.history }}
