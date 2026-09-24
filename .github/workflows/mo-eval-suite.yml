@@ -3,21 +3,30 @@ on:
   workflow_dispatch:
     inputs:
       arms:
-        description: Models to evaluate, space-separated ("none" = build the suite only)
-        default: "none"
+        description: Model routes to evaluate, space-separated ("none" = build the suite only)
+        default: "anthropic/claude-opus-5 momento/zai-org/GLM-5.3"
       harnesses:
         description: Coding-agent harnesses, space-separated (mo, cc, pi, strands)
-        default: "mo"
+        default: "mo cc"
       candidates:
         description: >-
           How many candidates to request source for. The Action defaults to 12, which is too few
           here: most of valkey's merged pull requests test through the Tcl suite, which the `c`
-          contract cannot grade, so they are rejected as writing no test and eat the budget. At 12,
-          9 were spent that way and one order survived.
+          contract cannot grade, so they are rejected as writing no test and eat the budget.
         default: "40"
       history:
         description: How many recently merged pull requests to offer as candidates
         default: "300"
+      suite-key:
+        description: >-
+          Cache generation for the mined suite. Bump it to mine a fresh one — the cache is keyed on
+          this plus history and candidates, so upstream moving on does NOT invalidate it by itself.
+          A suite is a set of tasks proved at particular commits; re-mining is the expensive half and
+          changing the model or the harness needs none of it.
+        default: "v1"
+      refresh-suite:
+        description: Mine a fresh suite even if one is cached ("true" to force)
+        default: "false"
 permissions:
   contents: read
   pull-requests: read
@@ -25,28 +34,39 @@ permissions:
 jobs:
   suite:
     runs-on: ubuntu-latest
+    env:
+      # Inside the workspace rather than the runner's temp space, so the cache below can hold it.
+      SUITE_DIR: ${{ github.workspace }}/.mo-eval-out
     steps:
       # Pinned by commit, not by tag. This job holds `id-token: write`, so whatever runs in it can
       # mint this repository's identity, and a moved major tag changes that code with no diff here.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-          # The token goes away with the step that used it. `checkout` otherwise leaves it in
-          # `.git/config` as an auth header, and this job runs the repository's OWN historical
-          # tests — code from before anyone reviewed it for this purpose, as the same user, in the
-          # same workspace.
           persist-credentials: false
 
       # The C toolchain, on the HOST. The worker image carries it too, but probes are run natively
       # by the runner — only scoring happens in the image — so a host without gtest fails every
-      # probe at the build step inside the declared test command. `build-essential` is already on
-      # the ubuntu runner; gtest and gmock are not, and no official image ships them, which is why
-      # `worker_image` points at one we publish.
+      # probe at the build step inside the declared test command.
       - name: C/GoogleTest toolchain
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends pkg-config libgtest-dev libgmock-dev
           pkg-config --modversion gtest gmock
+
+      # Mining reads 300 merged pull requests and validation runs valkey's own build twice per
+      # candidate; changing the model or the harness changes neither. Keyed on what actually
+      # decides the suite's contents — deliberately NOT on the upstream head, which moves daily and
+      # would re-mine for no gain. `suite-key` is the manual escape hatch.
+      - name: Restore a previously mined suite
+        id: suite
+        if: inputs.refresh-suite != 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.SUITE_DIR }}
+          key: mo-eval-suite-${{ inputs.suite-key }}-h${{ inputs.history }}-c${{ inputs.candidates }}
+          # No restore-keys: a partial match would be a suite mined under different parameters, and
+          # the run would report figures for a benchmark nobody asked for.
 
       - uses: momentohq/mo-eval-action@d21b901efe7a5b6a02b0c3c84987b181a06a428c # v1.6.1
         with:
@@ -54,3 +74,11 @@ jobs:
           harnesses: ${{ inputs.harnesses }}
           candidates: ${{ inputs.candidates }}
           history: ${{ inputs.history }}
+          out: ${{ env.SUITE_DIR }}
+          reuse-suite: ${{ steps.suite.outputs.cache-hit == 'true' && env.SUITE_DIR || '' }}
+          # The tenant the tasks were PROVED under, which for a fork is the upstream this
+          # repository's `.mo-eval/config.toml` declares in `repo`. The Action defaults this to the
+          # checkout's own name, and on the reuse path that is a different tenant whose tasks these
+          # are not — the submit would be refused. The fresh-mine path takes it from the config and
+          # ignores this, so it is correct on both.
+          repo-name: valkey-io/valkey

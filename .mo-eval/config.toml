@@ -15,8 +15,14 @@ worker_image = "public.ecr.aws/e5j4o1h7/mo-eval-worker-c-gtest@sha256:6117379dca
 # does not compile, and a build done in setup reports that as an environment that could not be
 # prepared rather than as the task failing.
 #
+# `-j2`, not `-j$(nproc)`. A grading worker runs with `--cpus 2 --memory 4g`, and `nproc` inside
+# it reports the HOST's core count — `--cpus` is a CFS bandwidth limit, not a visible core count —
+# so make fanned sixteen `cc1plus` processes into a 4 GiB cgroup and the kernel reaped four of them:
+# `g++: fatal error: Killed signal terminated program cc1plus`. valkey's gtest translation units
+# compile under -Werror -Wpedantic -Wextra and are individually heavy.
+#
 # SINGLE quotes around the script. The generated scorer pastes this command into a bash script
 # verbatim, so double quotes would let THAT shell expand `$(nproc)` and `"$@"` before `sh` ever
 # sees them. Inside single quotes both reach the inner shell, where `"$@"` is the filter the probe
 # appended and `mo-eval` is its `$0`.
-test_command = "sh -c 'set -e; make -C src/unit valkey-unit-gtests -j$(nproc); exec ./src/unit/valkey-unit-gtests \"$@\"' mo-eval"
+test_command = "sh -c 'set -e; make -C src/unit valkey-unit-gtests -j2; exec ./src/unit/valkey-unit-gtests \"$@\"' mo-eval"
