@@ -48,7 +48,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends pkg-config libgtest-dev libgmock-dev
           pkg-config --modversion gtest gmock
 
-      - uses: momentohq/mo-eval-action@993a3269e0f0b037a2d83cbd81a2e59d4532ee48 # v1.6.0
+      - uses: momentohq/mo-eval-action@d21b901efe7a5b6a02b0c3c84987b181a06a428c # v1.6.1
         with:
           arms: ${{ inputs.arms }}
           harnesses: ${{ inputs.harnesses }}
