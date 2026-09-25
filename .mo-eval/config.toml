@@ -28,6 +28,17 @@ worker_image = "public.ecr.aws/e5j4o1h7/mo-eval-worker-c-gtest@sha256:27dfe36a8a
 # Every graded worker is told its quota in `MO_EVAL_WORKER_CPUS`, so this follows a lane resize with
 # no edit here — the prod lane moved from 2 CPUs to 4 on 2026-09-24 and this command picked it up.
 #
+# DOUBLED, per momentohq/mfunc-llm-gw#4714: linking and I/O leave the quota idle, so ~2x the quota
+# beats matching it. That issue measured the optimum at `--cpus 2` and asked for it to be confirmed
+# at a larger worker before being treated as exact, so it was — in THIS image, under a real
+# `--cpus 4 --memory 8g` cgroup, cold with ccache disabled:
+#
+#   -j4   peak 1515 MiB      -j8   peak 2423 MiB      -j16  peak 4728 MiB   (limit 8192)
+#
+# About 300 MiB per compiler, not the ~1 GiB estimated from the old 4 GiB worker, so -j8 sits at 30%
+# of the limit. It also explains the original `Killed signal terminated program cc1plus`: that was
+# -j16 against 4 GiB, which these numbers put at 4728 MiB — over that cgroup, well inside this one.
+#
 # The `:-2` is load-bearing, not defensive. A bare `-j` is UNLIMITED parallelism, and this same
 # command also runs where nothing sets the variable — the service runner's probes, which use the
 # runner's own environment. Unlimited `cc1plus` there is the very OOM the paragraph above describes.
@@ -36,4 +47,4 @@ worker_image = "public.ecr.aws/e5j4o1h7/mo-eval-worker-c-gtest@sha256:27dfe36a8a
 # verbatim, so double quotes would let THAT shell expand `${MO_EVAL_WORKER_CPUS:-2}` and `"$@"`
 # before `sh` ever sees them. Inside single quotes both reach the inner shell, where `"$@"` is the
 # filter the probe appended and `mo-eval` is its `$0`.
-test_command = "sh -c 'set -e; make -C src/unit valkey-unit-gtests -j\"${MO_EVAL_WORKER_CPUS:-2}\"; exec ./src/unit/valkey-unit-gtests \"$@\"' mo-eval"
+test_command = "sh -c 'set -e; make -C src/unit valkey-unit-gtests -j\"$(( ${MO_EVAL_WORKER_CPUS:-2} * 2 ))\"; exec ./src/unit/valkey-unit-gtests \"$@\"' mo-eval"
