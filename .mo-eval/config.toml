@@ -4,7 +4,11 @@ repo = "valkey-io/valkey"          # mined against upstream; this checkout may b
 # The toolchain an agent and a scorer run in. Pinned by digest because a mutable tag is refused: the
 # image is what a scorer re-runs months later. Published by momentohq/mfunc-llm-gw; nothing official
 # ships GoogleTest, which is why this exists at all.
-worker_image = "public.ecr.aws/e5j4o1h7/mo-eval-worker-c-gtest@sha256:6117379dca6c163d279f9f069d7a4a37790ca7198e736b32014a2c0979892225"
+#
+# This digest carries ccache (momentohq/mfunc-llm-gw#4570), which the C contract seeds for the
+# baseline and scorer workers — the grading compiles run on every cell. Re-pinning changes the
+# environment previously graded tasks are re-scored in, which is what a digest pin is for.
+worker_image = "public.ecr.aws/e5j4o1h7/mo-eval-worker-c-gtest@sha256:27dfe36a8a232f124db0aeeae52c6a2058d9c1626597c75478a4b03e27e7b788"
 
 # Build the GoogleTest binary, then run it with whatever filter the probe appends.
 #
